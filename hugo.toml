@@ -1,0 +1,15 @@
+baseURL = "/"
+languageCode = "zh-cn"
+title = "我的像素部落"
+theme = "digio-theme"
+enableGitInfo = true
+
+[build]
+  writeStats = true
+
+[[menu.main]]
+  name = "首页"
+  url = "/"
+[[menu.main]]
+  name = "文章"
+  url = "/posts"
