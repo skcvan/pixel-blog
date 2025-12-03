@@ -1,6 +1,6 @@
 baseURL = "/"
 languageCode = "zh-cn"
-title = "我的像素部落"
+title = "Casey's Pixel Log"
 theme = "digio-theme"
 enableGitInfo = true
 
