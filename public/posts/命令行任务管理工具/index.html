@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="zh-cn" dir="ltr">
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Casey&#39;s Pixel Log</title>
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="/css/styles.css" rel="stylesheet">
+</head>
+</head>
+<body>
+  <header>
+    <header class="py-6 px-6">
+    <div class="flex justify-start items-center">
+    
+    <nav>
+      <ul class="flex list-none m-0 p-0 gap-4">
+      <li>
+        <a class="text-sm" href="/posts">
+            文章
+        </a>
+      </li>
+      <li>
+        <a class="text-sm" href="/">
+            首页
+        </a>
+      </li>
+      </ul>
+    </nav>
+</div>
+</header>
+  </header>
+  <div class="flex justify-center">
+    <img src="/border-home1.png" alt="border-home1">
+  </div>
+  <main>
+    <div class="mx-auto w-full max-w-4xl px-4 py-6">
+    
+  <div class="flex">
+    <div class="flex-1">
+      <h1 class=" py-2">命令行任务管理工具（CLI To-Do List）</h1>
+      
+      
+      <time datetime="2025-12-09T14:30:26&#43;08:00" class="block mb-4">December 9, 2025</time>
+      <h2 id="功能需求">功能需求</h2>
+<p> 支持<code>add</code>（添加任务）、<code>list</code>（列出任务）、<code>done</code>（标记完成）。</p>
+<h2 id="设计思路">设计思路</h2>
+<ol>
+<li>通过os.Args来读取并解析命令行参数</li>
+<li>读取os.Args[1]然后通过swtich分发给add/list/done</li>
+<li>核心函数loadTasks()和saveTasks()分别加载和保存任务（数据存储在json文件中）</li>
+</ol>
+<h2 id="数据模型">数据模型</h2>
+<p>定义Task结构体，包含Description（任务内容），CreatedAt（创建时间），IsDone（是否完成）</p>
+<h2 id="具体流程">具体流程</h2>
+<h3 id="1首先定义结构体">1.首先定义结构体</h3>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-jsx" data-lang="jsx"><span style="display:flex;"><span><span style="color:#a6e22e">type</span> <span style="color:#a6e22e">Task</span> <span style="color:#a6e22e">struct</span> {
+</span></span><span style="display:flex;"><span>    <span style="color:#a6e22e">Description</span> <span style="color:#a6e22e">string</span> <span style="color:#e6db74">`json:&#34;description&#34;`</span> <span style="color:#75715e">// 任务描述
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#a6e22e">CreatedAt</span>   <span style="color:#a6e22e">string</span> <span style="color:#e6db74">`json:&#34;createdAt&#34;`</span>   <span style="color:#75715e">// 创建时间
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#a6e22e">IsDone</span>      <span style="color:#a6e22e">bool</span>   <span style="color:#e6db74">`json:&#34;isDone&#34;`</span>      <span style="color:#75715e">// 是否完成
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>}
+</span></span></code></pre></div><p>后面的json字段是为了添加映射，这里需要补充json序列化和反序列化的知识，</p>
+<p>在 Go 语言中，进行 JSON 操作时，结构体的<strong>字段名</strong>需要满足 JSON 的规范，这涉及到 <strong>结构体标签（Struct Tags）</strong>。</p>
+<ul>
+<li><strong>问题：</strong> 你的结构体字段名使用了 Go 语言惯用的<strong>大驼峰命名</strong>（如 <code>Desription</code>）。但在 JSON 文件中，通用惯例是使用 <strong>小写或蛇形命名</strong>（如 <code>description</code>）。</li>
+<li><strong>解决方案：</strong> 我们需要使用 <code>json:&quot;fieldName&quot;</code> 标签来指导 <code>encoding/json</code> 包进行正确的映射。</li>
+</ul>
+<h3 id="2处理命令行参数以及命令行分发代码">2.处理命令行参数以及命令行分发代码</h3>
+<ul>
+<li><code>os.Args[0]</code>：永远是程序的名称（例如：<code>./todo</code>）</li>
+<li><code>os.Args[1]</code>：是第一个参数，即命令（例如：<code>add</code>）</li>
+<li><code>os.Args[2:]</code>：是命令后面的所有参数</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-jsx" data-lang="jsx"><span style="display:flex;"><span><span style="color:#a6e22e">func</span> <span style="color:#a6e22e">main</span>() {
+</span></span><span style="display:flex;"><span>  <span style="color:#75715e">//检查参数长度
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">len</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Args</span>) <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">2</span> {
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;用法: todo &lt;命令&gt; [参数]&#34;</span>)
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;命令: add, list, done&#34;</span>)
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> 
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#a6e22e">command</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Args</span>[<span style="color:#ae81ff">1</span>]
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 使用 switch 结构来分发命令
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">switch</span> <span style="color:#a6e22e">command</span> {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">case</span> <span style="color:#e6db74">&#34;add&#34;</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// ... 添加任务逻辑
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">case</span> <span style="color:#e6db74">&#34;list&#34;</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// ... 列出任务逻辑
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">case</span> <span style="color:#e6db74">&#34;done&#34;</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// ... 标记完成逻辑
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">default</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;未知命令: %s\n&#34;</span>, <span style="color:#a6e22e">command</span>)
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><h3 id="3实现核心函数loadtasks和savetasks">3.实现核心函数loadTasks()和saveTasks()</h3>
+<p>这部分涉及很多io操作的函数，以及错误处理的方式和序列化的知识，知识点总结如下</p>
+<p>常用文件 I/O (Input/Output) 操作函数</p>
+<table>
+  <thead>
+      <tr>
+          <th><strong>函数/常量</strong></th>
+          <th><strong>类型</strong></th>
+          <th><strong>功能</strong></th>
+          <th><strong>核心作用</strong></th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td><strong><code>os.ReadFile(name)</code></strong></td>
+          <td>I/O 读取</td>
+          <td>快速读取整个文件内容。</td>
+          <td>返回文件的全部 <code>[]byte</code> 和 <code>error</code>。</td>
+      </tr>
+      <tr>
+          <td><strong><code>os.WriteFile(name, data, perm)</code></strong></td>
+          <td>I/O 写入</td>
+          <td>将 <code>[]byte</code> 数据写入文件，并设置文件权限。</td>
+          <td>实现数据的<strong>持久化</strong>（保存）。</td>
+      </tr>
+      <tr>
+          <td><strong><code>os.Stat(name)</code></strong></td>
+          <td>文件信息</td>
+          <td>获取文件的元数据（大小、修改时间等）。</td>
+          <td>用于检查文件状态或是否存在。</td>
+      </tr>
+      <tr>
+          <td><strong><code>os.Remove(name)</code></strong></td>
+          <td>文件操作</td>
+          <td>删除指定路径的文件。</td>
+          <td>用于清理或删除数据。</td>
+      </tr>
+      <tr>
+          <td><strong><code>os.Exit(code)</code></strong></td>
+          <td>程序控制</td>
+          <td>立即终止程序运行。</td>
+          <td><code>os.Exit(0)</code> 为正常退出；<code>os.Exit(1)</code> 为错误退出。</td>
+      </tr>
+      <tr>
+          <td><strong><code>os.IsNotExist(err)</code></strong></td>
+          <td>错误判断</td>
+          <td>检查传入的 <code>err</code> 是否是<strong>文件不存在</strong>的系统错误。</td>
+          <td>优雅地处理第一次运行或文件缺失的情况。</td>
+      </tr>
+  </tbody>
+</table>
+<p>JSON 序列化与结构体标签</p>
+<table>
+  <thead>
+      <tr>
+          <th><strong>函数</strong></th>
+          <th><strong>类型</strong></th>
+          <th><strong>作用</strong></th>
+          <th><strong>适用场景</strong></th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td><strong><code>json.Unmarshal(data, &amp;v)</code></strong></td>
+          <td>反序列化</td>
+          <td>将 <code>[]byte</code> 格式的 JSON 数据解析并填充到 <strong>指针指向</strong> 的 Go 变量 <code>v</code> 中。</td>
+          <td><strong>读取</strong>外部数据（如 API 响应、配置文件）。</td>
+      </tr>
+      <tr>
+          <td><strong><code>json.Marshal(v)</code></strong></td>
+          <td>序列化</td>
+          <td>将 Go 变量转换为<strong>紧凑的</strong>、单行的 JSON <code>[]byte</code>。</td>
+          <td><strong>写入</strong>网络传输（API 响应），追求效率。</td>
+      </tr>
+      <tr>
+          <td><strong><code>json.MarshalIndent(v, prefix, indent)</code></strong></td>
+          <td>格式化序列化</td>
+          <td>生成 <strong>带缩进</strong> 的 JSON 字符串（美化输出）。</td>
+          <td><strong>写入</strong>本地文件、配置文件、调试日志。</td>
+      </tr>
+      <tr>
+          <td><strong><code>json.NewDecoder</code> / <code>json.NewEncoder</code></strong></td>
+          <td>流式处理</td>
+          <td>用于处理大型 JSON 文件或网络流，避免一次性加载全部数据到内存。</td>
+          <td>高性能、大文件 I/O。</td>
+      </tr>
+  </tbody>
+</table>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-jsx" data-lang="jsx"><span style="display:flex;"><span><span style="color:#75715e">// --- 核心函数 1: 从文件中加载任务列表 ---
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#a6e22e">func</span> <span style="color:#a6e22e">loadTasks</span>() ([]<span style="color:#a6e22e">Task</span>, <span style="color:#a6e22e">error</span>) {
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 1. 尝试读取文件内容
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#a6e22e">data</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">ReadFile</span>(<span style="color:#a6e22e">tasksFile</span>)
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 2. 处理文件不存在的情况 (这是正常的，表示第一次运行)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">IsNotExist</span>(<span style="color:#a6e22e">err</span>) {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> []<span style="color:#a6e22e">Task</span>{}, <span style="color:#a6e22e">nil</span> <span style="color:#75715e">// 返回一个空的切片和 nil 错误
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 3. 处理其他 I/O 错误
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#a6e22e">nil</span> {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> <span style="color:#a6e22e">nil</span>, <span style="color:#a6e22e">err</span>
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 4. 反序列化 (Unmarshal) JSON 数据到 []Task
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">var</span> <span style="color:#a6e22e">tasks</span> []<span style="color:#a6e22e">Task</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">json</span>.<span style="color:#a6e22e">Unmarshal</span>(<span style="color:#a6e22e">data</span>, <span style="color:#f92672">&amp;</span><span style="color:#a6e22e">tasks</span>); <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#a6e22e">nil</span> {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> <span style="color:#a6e22e">nil</span>, <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Errorf</span>(<span style="color:#e6db74">&#34;解析JSON失败: %w&#34;</span>, <span style="color:#a6e22e">err</span>)
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> <span style="color:#a6e22e">tasks</span>, <span style="color:#a6e22e">nil</span>
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// --- 核心函数 2: 将任务列表保存到文件 ---
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#a6e22e">func</span> <span style="color:#a6e22e">saveTasks</span>(<span style="color:#a6e22e">tasks</span> []<span style="color:#a6e22e">Task</span>) <span style="color:#a6e22e">error</span> {
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 1. 序列化 (Marshal) []Task 到 JSON 格式 (使用 MarshalIndent 格式化输出)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#a6e22e">data</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">json</span>.<span style="color:#a6e22e">MarshalIndent</span>(<span style="color:#a6e22e">tasks</span>, <span style="color:#e6db74">&#34;&#34;</span>, <span style="color:#e6db74">&#34;  &#34;</span>)
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#a6e22e">nil</span> {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Errorf</span>(<span style="color:#e6db74">&#34;JSON序列化失败: %w&#34;</span>, <span style="color:#a6e22e">err</span>)
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 2. 写入文件 (权限 0644 表示用户可读写)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">return</span> <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">WriteFile</span>(<span style="color:#a6e22e">tasksFile</span>, <span style="color:#a6e22e">data</span>, <span style="color:#ae81ff">0644</span>)
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><h3 id="data-err--jsonmarshalindenttasks---"><code>data, err := json.MarshalIndent(tasks, &quot;&quot;, &quot; &quot;)</code></h3>
+<p>这行代码使用了 Go 语言的<strong>多重赋值</strong>：</p>
+<ul>
+<li><strong><code>data []byte</code>：</strong> 变量 <code>data</code> 存储 <code>json.MarshalIndent</code> 函数的第一个返回值，即<strong>序列化后的 JSON 字节切片</strong>（<code>[]byte</code>）。</li>
+<li><strong><code>err error</code>：</strong> 变量 <code>err</code> 存储第二个返回值，即操作过程中可能产生的<strong>错误</strong>。</li>
+</ul>
+<p>这种模式（返回 <code>结果, 错误</code>）在 Go 标准库中是无处不在的，允许你在一行代码中接收操作结果并立即检查其是否失败。</p>
+<h3 id="jsonmarshalindenttasks---"><code>json.MarshalIndent(tasks, &quot;&quot;, &quot; &quot;)</code></h3>
+<p><code>json.MarshalIndent</code> 函数用于将 Go 数据结构转换为格式化（带缩进）的 JSON 字节切片，它接收三个参数：</p>
+<ol>
+<li><strong><code>tasks []Task</code>：</strong> 要序列化的 Go 数据。</li>
+<li><strong><code>prefix string</code> (第二个参数，空的 <code>&quot;&quot;</code>)：</strong> 定义 JSON <strong>每一行前缀</strong>。我们传入空字符串 <code>&quot;&quot;</code>，表示行前不加任何字符。</li>
+<li><strong><code>indent string</code> (第三个参数，带空格的 <code>&quot; &quot;</code>)：</strong> 定义 JSON <strong>缩进字符串</strong>。我们传入两个空格 <code>&quot; &quot;</code>，表示 JSON 的每个层级都使用两个空格进行缩进，让文件结构清晰易读。</li>
+</ol>
+<p>这里展示第二三参数对json文件中读写的影响</p>
+<p>二三参数都为空</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-jsx" data-lang="jsx"><span style="display:flex;"><span>[{<span style="color:#e6db74">&#34;description&#34;</span><span style="color:#f92672">:</span><span style="color:#e6db74">&#34;购买牛奶&#34;</span>,<span style="color:#e6db74">&#34;createdAt&#34;</span><span style="color:#f92672">:</span><span style="color:#e6db74">&#34;2025-12-08&#34;</span>,<span style="color:#e6db74">&#34;isDone&#34;</span><span style="color:#f92672">:</span><span style="color:#66d9ef">false</span>}]
+</span></span></code></pre></div><p>第二个参数为#，第三个参数为俩空格</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-jsx" data-lang="jsx"><span style="display:flex;"><span> <span style="color:#960050;background-color:#1e0010">#</span> [
+</span></span><span style="display:flex;"><span> <span style="color:#960050;background-color:#1e0010">#</span>     {
+</span></span><span style="display:flex;"><span> <span style="color:#960050;background-color:#1e0010">#</span>         <span style="color:#e6db74">&#34;description&#34;</span><span style="color:#f92672">:</span> <span style="color:#e6db74">&#34;购买牛奶&#34;</span>,
+</span></span><span style="display:flex;"><span> <span style="color:#960050;background-color:#1e0010">#</span>         <span style="color:#e6db74">&#34;createdAt&#34;</span><span style="color:#f92672">:</span> <span style="color:#e6db74">&#34;2025-12-08&#34;</span>,
+</span></span><span style="display:flex;"><span> <span style="color:#960050;background-color:#1e0010">#</span>         <span style="color:#e6db74">&#34;isDone&#34;</span><span style="color:#f92672">:</span> <span style="color:#66d9ef">false</span>
+</span></span><span style="display:flex;"><span> <span style="color:#960050;background-color:#1e0010">#</span>     }
+</span></span><span style="display:flex;"><span> <span style="color:#960050;background-color:#1e0010">#</span> ]
+</span></span></code></pre></div><h3 id="4实现addlistdone函数">4.实现add/list/done函数</h3>
+<p><strong>（1）add函数</strong></p>
+<p>通过新建新的task结构体存储新任务</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-jsx" data-lang="jsx"><span style="display:flex;"><span><span style="color:#66d9ef">case</span> <span style="color:#e6db74">&#34;add&#34;</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">len</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Args</span>) <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">3</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;❌ 错误: 请输入任务描述。用法: todo add &lt;描述&gt;&#34;</span>)
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">description</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">strings</span>.<span style="color:#a6e22e">Join</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Args</span>[<span style="color:#ae81ff">2</span><span style="color:#f92672">:</span>], <span style="color:#e6db74">&#34; &#34;</span>)
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">newTask</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">Task</span>{
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">Description</span><span style="color:#f92672">:</span> <span style="color:#a6e22e">description</span>,
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">CreatedAt</span><span style="color:#f92672">:</span>   <span style="color:#a6e22e">time</span>.<span style="color:#a6e22e">Now</span>().<span style="color:#a6e22e">Format</span>(<span style="color:#e6db74">&#34;2006-01-02 15:04:05&#34;</span>),<span style="color:#75715e">//规定时间的格式
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#a6e22e">IsDone</span><span style="color:#f92672">:</span>      <span style="color:#66d9ef">false</span>,
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">tasks</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">loadTasks</span>()
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#a6e22e">nil</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Fprintf</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Stderr</span>, <span style="color:#e6db74">&#34;❌ 加载任务失败: %v\n&#34;</span>, <span style="color:#a6e22e">err</span>)
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">tasks</span> <span style="color:#f92672">=</span> <span style="color:#a6e22e">append</span>(<span style="color:#a6e22e">tasks</span>, <span style="color:#a6e22e">newTask</span>) <span style="color:#75715e">// Day 4: 切片 append
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">saveTasks</span>(<span style="color:#a6e22e">tasks</span>); <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#a6e22e">nil</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Fprintf</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Stderr</span>, <span style="color:#e6db74">&#34;❌ 保存任务失败: %v\n&#34;</span>, <span style="color:#a6e22e">err</span>)
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;✅ 任务添加成功: %s\n&#34;</span>, <span style="color:#a6e22e">newTask</span>.<span style="color:#a6e22e">Description</span>)
+</span></span></code></pre></div><p><strong>（2）list函数</strong></p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-jsx" data-lang="jsx"><span style="display:flex;"><span><span style="color:#66d9ef">case</span> <span style="color:#e6db74">&#34;list&#34;</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">tasks</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">loadTasks</span>()
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#a6e22e">nil</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Fprintf</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Stderr</span>, <span style="color:#e6db74">&#34;❌ 加载任务失败: %v\n&#34;</span>, <span style="color:#a6e22e">err</span>)
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;\n--- 待办事项列表 ---&#34;</span>)
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">len</span>(<span style="color:#a6e22e">tasks</span>) <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;🎉 恭喜，任务列表为空！&#34;</span>)
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">return</span>
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span> <span style="color:#a6e22e">i</span>, <span style="color:#a6e22e">t</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">range</span> <span style="color:#a6e22e">tasks</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">status</span> <span style="color:#f92672">:=</span> <span style="color:#e6db74">&#34;[ ]&#34;</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">t</span>.<span style="color:#a6e22e">IsDone</span> {
+</span></span><span style="display:flex;"><span>                <span style="color:#a6e22e">status</span> <span style="color:#f92672">=</span> <span style="color:#e6db74">&#34;[X]&#34;</span> 
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// 打印格式: [状态] 序号. 描述 (创建时间)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;%s %d. %s (创建于: %s)\n&#34;</span>, <span style="color:#a6e22e">status</span>, <span style="color:#a6e22e">i</span><span style="color:#f92672">+</span><span style="color:#ae81ff">1</span>, <span style="color:#a6e22e">t</span>.<span style="color:#a6e22e">Description</span>, <span style="color:#a6e22e">t</span>.<span style="color:#a6e22e">CreatedAt</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;----------------------\n&#34;</span>)
+</span></span></code></pre></div><p><strong>（3）done函数</strong></p>
+<p>这里用到了strconv包，这个包是Go 中专门负责在 <strong>字符串</strong> 和 <strong>基本数据类型</strong> 之间进行转换的工具。</p>
+<table>
+  <thead>
+      <tr>
+          <th><strong>函数</strong></th>
+          <th><strong>作用</strong></th>
+          <th><strong>格式和返回值</strong></th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td><strong><code>Atoi(s string)</code></strong></td>
+          <td><strong>字符串转整数 (简写)</strong></td>
+          <td>转换字符串 <code>s</code> 为 <code>int</code> 类型。是最常用的简便形式。返回 <code>(int, error)</code>。</td>
+      </tr>
+      <tr>
+          <td><strong><code>ParseInt(s, base, bitSize)</code></strong></td>
+          <td><strong>字符串转整数 (通用)</strong></td>
+          <td><code>Atoi</code> 的底层实现。允许你指定<strong>进制</strong>（<code>base</code>，如 10 进制、16 进制）和<strong>位数</strong>（<code>bitSize</code>，如 64 位）。</td>
+      </tr>
+      <tr>
+          <td><strong><code>Itoa(i int)</code></strong></td>
+          <td><strong>整数转字符串 (逆向)</strong></td>
+          <td>将 <code>int</code> 转换为对应的 <code>string</code>。用于程序需要将数字结果显示或写入文件时。</td>
+      </tr>
+  </tbody>
+</table>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-jsx" data-lang="jsx"><span style="display:flex;"><span><span style="color:#66d9ef">case</span> <span style="color:#e6db74">&#34;done&#34;</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">len</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Args</span>) <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">3</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;❌ 错误: 请指定要标记完成的任务序号。用法: todo done &lt;序号&gt;&#34;</span>)
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">indexStr</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Args</span>[<span style="color:#ae81ff">2</span>]
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">index</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">strconv</span>.<span style="color:#a6e22e">Atoi</span>(<span style="color:#a6e22e">indexStr</span>) 
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">//字符串转整数是很危险的操作，必须检查err
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#a6e22e">nil</span> <span style="color:#f92672">||</span> <span style="color:#a6e22e">index</span> <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">0</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;❌ 错误: 无效的序号。请输入一个正整数。&#34;</span>)
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">tasks</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">loadTasks</span>()
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#a6e22e">nil</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Fprintf</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Stderr</span>, <span style="color:#e6db74">&#34;❌ 加载任务失败: %v\n&#34;</span>, <span style="color:#a6e22e">err</span>)
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 检查索引是否越界
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">index</span> <span style="color:#f92672">&gt;</span> <span style="color:#a6e22e">len</span>(<span style="color:#a6e22e">tasks</span>) {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;❌ 错误: 序号 %d 超出列表范围 (%d个任务)。\n&#34;</span>, <span style="color:#a6e22e">index</span>, <span style="color:#a6e22e">len</span>(<span style="color:#a6e22e">tasks</span>))
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 标记任务完成 (切片索引是 index - 1)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#a6e22e">tasks</span>[<span style="color:#a6e22e">index</span><span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>].<span style="color:#a6e22e">IsDone</span> <span style="color:#f92672">=</span> <span style="color:#66d9ef">true</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 保存列表
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">saveTasks</span>(<span style="color:#a6e22e">tasks</span>); <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#a6e22e">nil</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Fprintf</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Stderr</span>, <span style="color:#e6db74">&#34;❌ 保存任务失败: %v\n&#34;</span>, <span style="color:#a6e22e">err</span>)
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;✅ 任务 %d: &#39;%s&#39; 已标记为完成。\n&#34;</span>, <span style="color:#a6e22e">index</span>, <span style="color:#a6e22e">tasks</span>[<span style="color:#a6e22e">index</span><span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>].<span style="color:#a6e22e">Description</span>)
+</span></span></code></pre></div><h2 id="完整代码">完整代码</h2>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-jsx" data-lang="jsx"><span style="display:flex;"><span><span style="color:#66d9ef">package</span> <span style="color:#a6e22e">main</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">import</span> (
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">&#34;encoding/json&#34;</span> <span style="color:#75715e">// JSON序列化/反序列化
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#e6db74">&#34;fmt&#34;</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">&#34;os&#34;</span>      <span style="color:#75715e">// 文件I/O和命令行参数
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#e6db74">&#34;strconv&#34;</span> <span style="color:#75715e">// 字符串转整数 (用于 &#39;done&#39; 命令)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#e6db74">&#34;strings&#34;</span> <span style="color:#75715e">// 字符串处理 (用于 &#39;add&#39; 命令)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#e6db74">&#34;time&#34;</span>    <span style="color:#75715e">// 时间戳
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>)
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// --- 核心配置与结构体 ---
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">const</span> <span style="color:#a6e22e">tasksFile</span> <span style="color:#f92672">=</span> <span style="color:#e6db74">&#34;tasks.json&#34;</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// Task 结构体 (Day 7 步骤一与二)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#a6e22e">type</span> <span style="color:#a6e22e">Task</span> <span style="color:#a6e22e">struct</span> {
+</span></span><span style="display:flex;"><span>    <span style="color:#a6e22e">Description</span> <span style="color:#a6e22e">string</span> <span style="color:#e6db74">`json:&#34;description&#34;`</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#a6e22e">CreatedAt</span>   <span style="color:#a6e22e">string</span> <span style="color:#e6db74">`json:&#34;createdAt&#34;`</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#a6e22e">IsDone</span>      <span style="color:#a6e22e">bool</span>   <span style="color:#e6db74">`json:&#34;isDone&#34;`</span>
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// --- 核心函数 1: 加载任务 ---
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#a6e22e">func</span> <span style="color:#a6e22e">loadTasks</span>() ([]<span style="color:#a6e22e">Task</span>, <span style="color:#a6e22e">error</span>) {
+</span></span><span style="display:flex;"><span>    <span style="color:#a6e22e">data</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">ReadFile</span>(<span style="color:#a6e22e">tasksFile</span>)
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">IsNotExist</span>(<span style="color:#a6e22e">err</span>) {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> []<span style="color:#a6e22e">Task</span>{}, <span style="color:#a6e22e">nil</span> <span style="color:#75715e">// 文件不存在，返回空列表
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#a6e22e">nil</span> {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> <span style="color:#a6e22e">nil</span>, <span style="color:#a6e22e">err</span>
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">var</span> <span style="color:#a6e22e">tasks</span> []<span style="color:#a6e22e">Task</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">json</span>.<span style="color:#a6e22e">Unmarshal</span>(<span style="color:#a6e22e">data</span>, <span style="color:#f92672">&amp;</span><span style="color:#a6e22e">tasks</span>); <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#a6e22e">nil</span> {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> <span style="color:#a6e22e">nil</span>, <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Errorf</span>(<span style="color:#e6db74">&#34;解析JSON失败: %w&#34;</span>, <span style="color:#a6e22e">err</span>)
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> <span style="color:#a6e22e">tasks</span>, <span style="color:#a6e22e">nil</span>
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// --- 核心函数 2: 保存任务 ---
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#a6e22e">func</span> <span style="color:#a6e22e">saveTasks</span>(<span style="color:#a6e22e">tasks</span> []<span style="color:#a6e22e">Task</span>) <span style="color:#a6e22e">error</span> {
+</span></span><span style="display:flex;"><span>    <span style="color:#a6e22e">data</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">json</span>.<span style="color:#a6e22e">MarshalIndent</span>(<span style="color:#a6e22e">tasks</span>, <span style="color:#e6db74">&#34;&#34;</span>, <span style="color:#e6db74">&#34;  &#34;</span>)
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#a6e22e">nil</span> {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Errorf</span>(<span style="color:#e6db74">&#34;JSON序列化失败: %w&#34;</span>, <span style="color:#a6e22e">err</span>)
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 写入文件，权限 0644
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">return</span> <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">WriteFile</span>(<span style="color:#a6e22e">tasksFile</span>, <span style="color:#a6e22e">data</span>, <span style="color:#ae81ff">0644</span>)
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// --- 主逻辑：命令分发与实现 ---
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#a6e22e">func</span> <span style="color:#a6e22e">main</span>() {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">len</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Args</span>) <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">2</span> {
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;用法: todo &lt;命令&gt; [参数] (add, list, done)&#34;</span>)
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">0</span>)
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#a6e22e">command</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Args</span>[<span style="color:#ae81ff">1</span>]
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">switch</span> <span style="color:#a6e22e">command</span> {
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// --- 1. ADD 命令实现 (Day 7 步骤四) ---
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">case</span> <span style="color:#e6db74">&#34;add&#34;</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">len</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Args</span>) <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">3</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;❌ 错误: 请输入任务描述。用法: todo add &lt;描述&gt;&#34;</span>)
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">description</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">strings</span>.<span style="color:#a6e22e">Join</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Args</span>[<span style="color:#ae81ff">2</span><span style="color:#f92672">:</span>], <span style="color:#e6db74">&#34; &#34;</span>)
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">newTask</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">Task</span>{
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">Description</span><span style="color:#f92672">:</span> <span style="color:#a6e22e">description</span>,
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">CreatedAt</span><span style="color:#f92672">:</span>   <span style="color:#a6e22e">time</span>.<span style="color:#a6e22e">Now</span>().<span style="color:#a6e22e">Format</span>(<span style="color:#e6db74">&#34;2006-01-02 15:04:05&#34;</span>),
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">IsDone</span><span style="color:#f92672">:</span>      <span style="color:#66d9ef">false</span>,
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">tasks</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">loadTasks</span>()
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#a6e22e">nil</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Fprintf</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Stderr</span>, <span style="color:#e6db74">&#34;❌ 加载任务失败: %v\n&#34;</span>, <span style="color:#a6e22e">err</span>)
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">tasks</span> <span style="color:#f92672">=</span> <span style="color:#a6e22e">append</span>(<span style="color:#a6e22e">tasks</span>, <span style="color:#a6e22e">newTask</span>) <span style="color:#75715e">// Day 4: 切片 append
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">saveTasks</span>(<span style="color:#a6e22e">tasks</span>); <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#a6e22e">nil</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Fprintf</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Stderr</span>, <span style="color:#e6db74">&#34;❌ 保存任务失败: %v\n&#34;</span>, <span style="color:#a6e22e">err</span>)
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;✅ 任务添加成功: %s\n&#34;</span>, <span style="color:#a6e22e">newTask</span>.<span style="color:#a6e22e">Description</span>)
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// --- 2. LIST 命令实现 (Day 7 步骤七) ---
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">case</span> <span style="color:#e6db74">&#34;list&#34;</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">tasks</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">loadTasks</span>()
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#a6e22e">nil</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Fprintf</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Stderr</span>, <span style="color:#e6db74">&#34;❌ 加载任务失败: %v\n&#34;</span>, <span style="color:#a6e22e">err</span>)
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;\n--- 待办事项列表 ---&#34;</span>)
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">len</span>(<span style="color:#a6e22e">tasks</span>) <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;🎉 恭喜，任务列表为空！&#34;</span>)
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">return</span>
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span> <span style="color:#a6e22e">i</span>, <span style="color:#a6e22e">t</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">range</span> <span style="color:#a6e22e">tasks</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">status</span> <span style="color:#f92672">:=</span> <span style="color:#e6db74">&#34;[ ]&#34;</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">t</span>.<span style="color:#a6e22e">IsDone</span> {
+</span></span><span style="display:flex;"><span>                <span style="color:#a6e22e">status</span> <span style="color:#f92672">=</span> <span style="color:#e6db74">&#34;[X]&#34;</span>
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// 打印格式: [状态] 序号. 描述 (创建时间) 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;%s %d. %s (创建于: %s)\n&#34;</span>, <span style="color:#a6e22e">status</span>, <span style="color:#a6e22e">i</span><span style="color:#f92672">+</span><span style="color:#ae81ff">1</span>, <span style="color:#a6e22e">t</span>.<span style="color:#a6e22e">Description</span>, <span style="color:#a6e22e">t</span>.<span style="color:#a6e22e">CreatedAt</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;----------------------\n&#34;</span>)
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// --- 3. DONE 命令实现 ---
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">case</span> <span style="color:#e6db74">&#34;done&#34;</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">len</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Args</span>) <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">3</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;❌ 错误: 请指定要标记完成的任务序号。用法: todo done &lt;序号&gt;&#34;</span>)
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 字符串转整数 (复习)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#a6e22e">indexStr</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Args</span>[<span style="color:#ae81ff">2</span>]
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">index</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">strconv</span>.<span style="color:#a6e22e">Atoi</span>(<span style="color:#a6e22e">indexStr</span>)
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#a6e22e">nil</span> <span style="color:#f92672">||</span> <span style="color:#a6e22e">index</span> <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">0</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;❌ 错误: 无效的序号。请输入一个正整数。&#34;</span>)
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">tasks</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">loadTasks</span>()
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#a6e22e">nil</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Fprintf</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Stderr</span>, <span style="color:#e6db74">&#34;❌ 加载任务失败: %v\n&#34;</span>, <span style="color:#a6e22e">err</span>)
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 检查索引是否越界
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">index</span> <span style="color:#f92672">&gt;</span> <span style="color:#a6e22e">len</span>(<span style="color:#a6e22e">tasks</span>) {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;❌ 错误: 序号 %d 超出列表范围 (%d个任务)。\n&#34;</span>, <span style="color:#a6e22e">index</span>, <span style="color:#a6e22e">len</span>(<span style="color:#a6e22e">tasks</span>))
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 标记任务完成 (切片索引是 index - 1)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#a6e22e">tasks</span>[<span style="color:#a6e22e">index</span><span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>].<span style="color:#a6e22e">IsDone</span> <span style="color:#f92672">=</span> <span style="color:#66d9ef">true</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 保存列表
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">saveTasks</span>(<span style="color:#a6e22e">tasks</span>); <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#a6e22e">nil</span> {
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Fprintf</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Stderr</span>, <span style="color:#e6db74">&#34;❌ 保存任务失败: %v\n&#34;</span>, <span style="color:#a6e22e">err</span>)
+</span></span><span style="display:flex;"><span>            <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;✅ 任务 %d: &#39;%s&#39; 已标记为完成。\n&#34;</span>, <span style="color:#a6e22e">index</span>, <span style="color:#a6e22e">tasks</span>[<span style="color:#a6e22e">index</span><span style="color:#f92672">-</span><span style="color:#ae81ff">1</span>].<span style="color:#a6e22e">Description</span>)
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">default</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;❌ 未知命令: %s\n&#34;</span>, <span style="color:#a6e22e">command</span>)
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Exit</span>(<span style="color:#ae81ff">1</span>)
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><h2 id="使用方式">使用方式</h2>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-jsx" data-lang="jsx"><span style="display:flex;"><span><span style="color:#960050;background-color:#1e0010">#</span> <span style="color:#ae81ff">1.</span> <span style="color:#a6e22e">添加任务</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">$</span> <span style="color:#a6e22e">go</span> <span style="color:#a6e22e">run</span> <span style="color:#a6e22e">main</span>.<span style="color:#a6e22e">go</span> <span style="color:#a6e22e">add</span> <span style="color:#a6e22e">完成</span> <span style="color:#a6e22e">Day</span> <span style="color:#ae81ff">7</span> <span style="color:#a6e22e">总结</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#960050;background-color:#1e0010">#</span> <span style="color:#ae81ff">2.</span> <span style="color:#a6e22e">查看列表</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">$</span> <span style="color:#a6e22e">go</span> <span style="color:#a6e22e">run</span> <span style="color:#a6e22e">main</span>.<span style="color:#a6e22e">go</span> <span style="color:#a6e22e">list</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#960050;background-color:#1e0010">#</span> <span style="color:#ae81ff">3.</span> <span style="color:#a6e22e">标记第一个任务完成</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">$</span> <span style="color:#a6e22e">go</span> <span style="color:#a6e22e">run</span> <span style="color:#a6e22e">main</span>.<span style="color:#a6e22e">go</span> <span style="color:#a6e22e">done</span> <span style="color:#ae81ff">1</span>
+</span></span></code></pre></div><h2 id="总结">总结</h2>
+<p>本次深度分析的核心在于理解 Go 语言如何实现数据在内存和文件之间的往返</p>
+<p><strong>1. 文件操作的稳定性 :</strong></p>
+<ul>
+<li><strong>职责分离：</strong> 明确了 <code>os.ReadFile</code> 用于读，<code>os.WriteFile</code> 用于写。</li>
+<li><strong>健壮性：</strong> 学会了使用 <code>os.IsNotExist(err)</code> 优雅地处理文件缺失（第一次运行）的情况，避免程序崩溃。</li>
+</ul>
+<p><strong>2. 数据转换的桥梁:</strong></p>
+<ul>
+<li><strong>序列化：</strong> 使用 <code>json.MarshalIndent</code> 将 Go 内存中的 <code>[]Task</code> <strong>结构体</strong>转换为文件所需的 JSON <strong>字节切片</strong> (<code>[]byte</code>)。</li>
+<li><strong>反序列化：</strong> 使用 <code>json.Unmarshal</code> 将文件内容转换回 Go 的 <code>[]Task</code>（必须传递<strong>指针</strong>进行修改）。</li>
+<li><strong>可读性：</strong> 理解了 <code>json.MarshalIndent</code> 中的参数（<code>&quot;&quot;</code>, <code>&quot; &quot;</code>）用于美化输出，方便调试。</li>
+</ul>
+<p><strong>3. 错误处理链条:</strong></p>
+<ul>
+<li>理解了 Go 函数中 <code>(result, error)</code> 的标准返回值模式。</li>
+<li>掌握了 <code>fmt.Errorf(&quot;... %w&quot;, err)</code> 占位符，它能<strong>包装</strong>底层错误，确保在应用层能追踪到失败的根源。</li>
+</ul>
+
+      <div class="mt-6">
+        
+
+      </div>
+    </div>
+    
+    
+    <div class="w-64 ml-10 toc-container">
+      <h4 class="mb-4">⋅˚₊‧ ୨ on this page ୧ ‧₊˚ ⋅</h4>
+      <nav id="TableOfContents">
+  <ul>
+    <li><a href="#功能需求">功能需求</a></li>
+    <li><a href="#设计思路">设计思路</a></li>
+    <li><a href="#数据模型">数据模型</a></li>
+    <li><a href="#具体流程">具体流程</a>
+      <ul>
+        <li><a href="#1首先定义结构体">1.首先定义结构体</a></li>
+        <li><a href="#2处理命令行参数以及命令行分发代码">2.处理命令行参数以及命令行分发代码</a></li>
+        <li><a href="#3实现核心函数loadtasks和savetasks">3.实现核心函数loadTasks()和saveTasks()</a></li>
+        <li><a href="#data-err--jsonmarshalindenttasks---"><code>data, err := json.MarshalIndent(tasks, &#34;&#34;, &#34; &#34;)</code></a></li>
+        <li><a href="#jsonmarshalindenttasks---"><code>json.MarshalIndent(tasks, &#34;&#34;, &#34; &#34;)</code></a></li>
+        <li><a href="#4实现addlistdone函数">4.实现add/list/done函数</a></li>
+      </ul>
+    </li>
+    <li><a href="#完整代码">完整代码</a></li>
+    <li><a href="#使用方式">使用方式</a></li>
+    <li><a href="#总结">总结</a></li>
+  </ul>
+</nav>
+    </div>
+    
+  </div>
+
+    </div>
+  </main>
+  
+  <div class="mx-auto w-full max-w-4xl px-4 py-2 mt-8">
+    <img src="/recent-work.png" alt="recent-work">
+  </div>
+  <div class="mx-auto w-full max-w-4xl px-4 py-4">
+    
+    
+    
+      
+    
+    
+    
+    
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+    
+    
+    
+      
+      
+    
+      
+      
+        
+          
+          
+        
+      
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    
+    
+    
+    
+    <div class="grid lg:grid-cols-2 gap-4">
+      
+        
+          
+          <div class="not-prose flex cursor-default flex-col space-y-4 rounded-lg border border-white p-6 transition-all duration-150 hover:border-pink-300">
+            <h3 class="font-semibold flex items-center gap-2">
+              
+              命令行任务管理工具（CLI To-Do List）
+            </h3>
+            
+              <p><em><h2 id="功能需求">功能需求</h2>
+<p> 支持<code>add</code>（添加任务）、<code>list</code>（列出任务）、<code>done</code>（标记完成）。</p>
+<h2 id="设计思路">设计思路</h2>
+<ol>
+<li>通过os.Args来读取并解析命令行参数</li>
+<li>读取os.Args[1]然后通过swtich分发给add/list/done</li>
+<li>核心函数loadTasks()和saveTasks()分别加载和保存任务（数据存储在json文件中）</li>
+</ol>
+<h2 id="数据模型">数据模型</h2>
+<p>定义Task结构体，包含Description（任务内容），CreatedAt（创建时间），IsDone（是否完成）</p>
+<h2 id="具体流程">具体流程</h2>
+<h3 id="1首先定义结构体">1.首先定义结构体</h3>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-jsx" data-lang="jsx"><span style="display:flex;"><span><span style="color:#a6e22e">type</span> <span style="color:#a6e22e">Task</span> <span style="color:#a6e22e">struct</span> {
+</span></span><span style="display:flex;"><span>    <span style="color:#a6e22e">Description</span> <span style="color:#a6e22e">string</span> <span style="color:#e6db74">`json:&#34;description&#34;`</span> <span style="color:#75715e">// 任务描述
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#a6e22e">CreatedAt</span>   <span style="color:#a6e22e">string</span> <span style="color:#e6db74">`json:&#34;createdAt&#34;`</span>   <span style="color:#75715e">// 创建时间
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#a6e22e">IsDone</span>      <span style="color:#a6e22e">bool</span>   <span style="color:#e6db74">`json:&#34;isDone&#34;`</span>      <span style="color:#75715e">// 是否完成
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>}
+</span></span></code></pre></div><p>后面的json字段是为了添加映射，这里需要补充json序列化和反序列化的知识，</p>
+<p>在 Go 语言中，进行 JSON 操作时，结构体的<strong>字段名</strong>需要满足 JSON 的规范，这涉及到 <strong>结构体标签（Struct Tags）</strong>。</p>
+<ul>
+<li><strong>问题：</strong> 你的结构体字段名使用了 Go 语言惯用的<strong>大驼峰命名</strong>（如 <code>Desription</code>）。但在 JSON 文件中，通用惯例是使用 <strong>小写或蛇形命名</strong>（如 <code>description</code>）。</li>
+<li><strong>解决方案：</strong> 我们需要使用 <code>json:&quot;fieldName&quot;</code> 标签来指导 <code>encoding/json</code> 包进行正确的映射。</li>
+</ul>
+<h3 id="2处理命令行参数以及命令行分发代码">2.处理命令行参数以及命令行分发代码</h3>
+<ul>
+<li><code>os.Args[0]</code>：永远是程序的名称（例如：<code>./todo</code>）</li>
+<li><code>os.Args[1]</code>：是第一个参数，即命令（例如：<code>add</code>）</li>
+<li><code>os.Args[2:]</code>：是命令后面的所有参数</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-jsx" data-lang="jsx"><span style="display:flex;"><span><span style="color:#a6e22e">func</span> <span style="color:#a6e22e">main</span>() {
+</span></span><span style="display:flex;"><span>  <span style="color:#75715e">//检查参数长度
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">if</span> <span style="color:#a6e22e">len</span>(<span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Args</span>) <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">2</span> {
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;用法: todo &lt;命令&gt; [参数]&#34;</span>)
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;命令: add, list, done&#34;</span>)
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> 
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#a6e22e">command</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">os</span>.<span style="color:#a6e22e">Args</span>[<span style="color:#ae81ff">1</span>]
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 使用 switch 结构来分发命令
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">switch</span> <span style="color:#a6e22e">command</span> {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">case</span> <span style="color:#e6db74">&#34;add&#34;</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// ... 添加任务逻辑
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">case</span> <span style="color:#e6db74">&#34;list&#34;</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// ... 列出任务逻辑
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">case</span> <span style="color:#e6db74">&#34;done&#34;</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// ... 标记完成逻辑
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">default</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>        <span style="color:#a6e22e">fmt</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;未知命令: %s\n&#34;</span>, <span style="color:#a6e22e">command</span>)
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><h3 id="3实现核心函数loadtasks和savetasks">3.实现核心函数loadTasks()和saveTasks()</h3>
+<p>这部分涉及很多io操作的函数，以及错误处理的方式和序列化的知识，知识点总结如下</p></em></p>
+            
+            <a href="/posts/%E5%91%BD%E4%BB%A4%E8%A1%8C%E4%BB%BB%E5%8A%A1%E7%AE%A1%E7%90%86%E5%B7%A5%E5%85%B7/" class="self-start text-sm text-white underline">Read more →</a>
+          </div>
+        
+      
+        
+          
+          <div class="not-prose flex cursor-default flex-col space-y-4 rounded-lg border border-white p-6 transition-all duration-150 hover:border-pink-300">
+            <h3 class="font-semibold flex items-center gap-2">
+              <img src="/contribute.png" alt="">
+              external example
+            </h3>
+            
+              <p><em>Teaser for your external link</em></p>
+            
+            <a href="https://gohugo.io/" target="_blank" rel="noopener noreferrer" class="self-start text-sm text-white underline">Read more →</a>
+          </div>
+        
+      
+    </div>
+  </div>
+  
+  <div class="flex justify-center">
+    <img src="/border-home1.png" alt="border-home1">
+  </div>
+  <footer>
+    <p class="text-xs px-6 py-6">Made with ୨ <a href="https://github.com/danapixels/digio-theme" target="_blank" rel="noopener noreferrer">Digio</a> ୧ .</p>
+
+  </footer>
+</body>
+</html>
